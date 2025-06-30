@@ -1,0 +1,56 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+temp/
+
+# Local env files
+.env
+.env.*.local
+*.local
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# PM2 logs & ecosystem files
+pids
+*.pid
+*.seed
+*.pid.lock
+ecosystem.config.js
+
+# MongoDB data dump
+dump/
+*.tar.gz
+
+# Debugging tools
+coverage/
+nyc_output/
+.nyc_output/
+
+# Express caching or generated files
+.cache/
+.next/
