@@ -153,7 +153,7 @@ app.post('/api/contact', async (req, res) => {
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: 'info@onethrive.in',
+      to: 'jbhagat2005@gmail.com',
       subject: emailSubject,
       html: emailBody,
       replyTo: workEmail
