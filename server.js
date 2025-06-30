@@ -13,7 +13,7 @@ app.use(helmet());
 
 // Rate limiting - 10 requests per 15 minutes per IP
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 10,
   message: {
     error: 'Too many requests from this IP, please try again later.',
@@ -45,8 +45,8 @@ app.use('/api/contact', limiter);
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // Contact Schema
 const contactSchema = new mongoose.Schema({
@@ -89,8 +89,8 @@ const transporter = nodemailer.createTransport({
 });
 
 transporter.verify((error, success) => {
-  if (error) console.error('Email configuration error:', error);
-  else console.log('Email server is ready to send messages');
+  if (error) console.error('❌ Email configuration error:', error);
+  else console.log('✅ Email server is ready to send messages');
 });
 
 const formatActivityTypes = (activities) => {
@@ -139,7 +139,17 @@ app.post('/api/contact', async (req, res) => {
     await contactData.save();
 
     const emailSubject = `New Contact Form Submission - ${fullName}`;
-    const emailBody = `...`;
+    const emailBody = `
+      <h2>New Contact Form Submission</h2>
+      <p><strong>Name:</strong> ${fullName}</p>
+      <p><strong>Email:</strong> ${workEmail}</p>
+      <p><strong>Phone:</strong> ${phoneNumber || 'Not provided'}</p>
+      <p><strong>Company:</strong> ${companyName || 'Not provided'}</p>
+      <p><strong>Participants:</strong> ${participants || 'Not specified'}</p>
+      <p><strong>Activities:</strong> ${formatActivityTypes(activityType)}</p>
+      <p><strong>Message:</strong> ${message || 'None'}</p>
+      <p><strong>IP Address:</strong> ${ipAddress}</p>
+    `;
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
@@ -212,6 +222,7 @@ app.get('/', (req, res) => {
   });
 });
 
+// Error handlers
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
@@ -221,12 +232,10 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-module.exports = app;
 
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 3001;
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/api/health`);
-  });
-}
+// ✅ Start server (always bind to PORT!)
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+});
