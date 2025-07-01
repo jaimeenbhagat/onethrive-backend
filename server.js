@@ -23,7 +23,8 @@ const limiter = rateLimit({
 // CORS configuration
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://onethrive-temp.vercel.app'
+  'https://onethrive-temp.vercel.app',
+  'https://onethrive.in/'
 ];
 
 app.use(cors({
