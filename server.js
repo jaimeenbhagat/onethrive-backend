@@ -24,7 +24,7 @@ const limiter = rateLimit({
 const allowedOrigins = [
   'http://localhost:5173',
   'https://onethrive-temp.vercel.app',
-  'https://onethrive.in/',
+  'https://onethrive.in',
   'https://www.onethrive.in'
 ];
 
