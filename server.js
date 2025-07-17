@@ -10,6 +10,8 @@ const app = express();
 
 // Security middleware
 app.use(helmet());
+const roiCalculatorRoute = require('./roiCalculator');
+app.use('/api/roi-calculator', roiCalculatorRoute);
 
 // Rate limiting - 10 requests per 15 minutes per IP
 const limiter = rateLimit({
@@ -26,7 +28,7 @@ const allowedOrigins = [
   'https://onethrive-temp.vercel.app',
   'https://onethrive.in',
   'https://www.onethrive.in',
-  'https://full-website-opal.vercel.app/'
+  'https://full-website-opal.vercel.app'
 ];
 
 app.use(cors({
