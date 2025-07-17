@@ -96,7 +96,7 @@ const roiCalculatorSchema = new mongoose.Schema({
 const ROICalculator = mongoose.model('ROICalculator', roiCalculatorSchema);
 
 // Email Configuration
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.SENDER_EMAIL,
