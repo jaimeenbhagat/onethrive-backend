@@ -772,7 +772,139 @@ app.get('/', (req, res) => {
       }
     });
   });
+  app.post('/api/culture-quiz-email', async (req, res) => {
+    try {
+      const { email, quizType, timestamp } = req.body;
   
+      // Validation
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+  
+      // Validate email format
+      const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Please enter a valid email address' });
+      }
+  
+      const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+      const userAgent = req.headers['user-agent'] || 'unknown';
+  
+      // Create a simple schema for email collection if it doesn't exist
+      const cultureQuizEmailSchema = new mongoose.Schema({
+        email: {
+          type: String,
+          required: true,
+          trim: true,
+          lowercase: true,
+          match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+        },
+        quizType: { type: String, default: 'culture_quiz' },
+        submittedAt: { type: Date, default: Date.now },
+        ipAddress: { type: String },
+        userAgent: { type: String }
+      }, { timestamps: true });
+  
+      // Check if model already exists to avoid re-compilation error
+      const CultureQuizEmail = mongoose.models.CultureQuizEmail || mongoose.model('CultureQuizEmail', cultureQuizEmailSchema);
+  
+      // Save email to database
+      const emailData = new CultureQuizEmail({
+        email,
+        quizType: quizType || 'culture_quiz',
+        ipAddress,
+        userAgent
+      });
+  
+      await emailData.save();
+  
+      // Send email notification to owner
+      const emailSubject = `New Culture Quiz Email Submission - ${email}`;
+      const emailBody = `
+        <h2>📧 New Culture Quiz Email Submission</h2>
+        
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #00FFAB;">📊 Email Collection</h3>
+          <p><strong>Email:</strong> <span style="color: #00FFAB; font-size: 18px;">${email}</span></p>
+          <p><strong>Quiz Type:</strong> ${quizType || 'culture_quiz'}</p>
+          <p><strong>Timestamp:</strong> ${timestamp || new Date().toISOString()}</p>
+        </div>
+  
+        <h3>👤 User Information</h3>
+        <p><strong>IP Address:</strong> ${ipAddress}</p>
+        <p><strong>User Agent:</strong> ${userAgent}</p>
+        <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
+  
+        <hr style="margin: 30px 0;">
+        
+        <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+          <h4>🚀 Follow-up Opportunity</h4>
+          <p>This user has provided their email for culture quiz access. Consider reaching out to discuss:</p>
+          <ul>
+            <li>Culture assessment services</li>
+            <li>Employee engagement programs</li>
+            <li>Team building activities</li>
+            <li>Custom culture transformation solutions</li>
+          </ul>
+        </div>
+      `;
+  
+      const mailOptions = {
+        from: process.env.SENDER_EMAIL,
+        to: 'info@onethrive.in',
+        subject: emailSubject,
+        html: emailBody,
+        replyTo: email
+      };
+  
+      await transporter.sendMail(mailOptions);
+  
+      res.status(200).json({ 
+        success: true, 
+        message: 'Email submitted successfully for culture quiz access'
+      });
+  
+    } catch (error) {
+      console.error('Error processing culture quiz email:', error);
+      res.status(500).json({ error: 'Internal server error. Please try again later.' });
+    }
+  });
+  
+  // Optional: Add endpoint to get all culture quiz email submissions
+  app.get('/api/culture-quiz-emails', async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+  
+      // Check if model exists
+      const CultureQuizEmail = mongoose.models.CultureQuizEmail;
+      if (!CultureQuizEmail) {
+        return res.status(404).json({ error: 'No email submissions found' });
+      }
+  
+      const emails = await CultureQuizEmail.find()
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select('-__v');
+  
+      const total = await CultureQuizEmail.countDocuments();
+  
+      res.status(200).json({
+        emails,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching culture quiz emails:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
   // 404 handler for undefined routes
   app.use('*', (req, res) => {
     res.status(404).json({
