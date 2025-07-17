@@ -45,9 +45,10 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Apply rate limiting to both endpoints
+// Apply rate limiting to all endpoints
 app.use('/api/contact', limiter);
 app.use('/api/roi-calculator', limiter);
+app.use('/api/culture-quiz', limiter);
 
 // Allow preflight for all routes
 app.options('*', cors({
@@ -149,6 +150,51 @@ const roiCalculatorSchema = new mongoose.Schema({
 const ROICalculator = mongoose.model('ROICalculator', roiCalculatorSchema);
 
 // ========================
+// CULTURE QUIZ SCHEMA & LOGIC
+// ========================
+
+const cultureQuizSchema = new mongoose.Schema({
+  // User Contact Information
+  email: {
+    type: String,
+    required: true,
+    trim: true,
+    lowercase: true,
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+  },
+  
+  // Quiz Response Data
+  answers: {
+    type: Map,
+    of: Number,
+    required: true
+  },
+  
+  // Quiz Results
+  totalScore: { type: Number, required: true },
+  totalQuestions: { type: Number, required: true },
+  answeredCount: { type: Number, required: true },
+  
+  // Culture Level Result
+  cultureLevel: {
+    level: { type: String, required: true },
+    description: [{ type: String }],
+    cta: { type: String, required: true }
+  },
+  
+  // Calculated Metrics
+  scorePercentage: { type: Number, required: true },
+  completionRate: { type: Number, required: true },
+  
+  // Metadata
+  submittedAt: { type: Date, default: Date.now },
+  ipAddress: { type: String },
+  userAgent: { type: String }
+}, { timestamps: true });
+
+const CultureQuiz = mongoose.model('CultureQuiz', cultureQuizSchema);
+
+// ========================
 // EMAIL CONFIGURATION
 // ========================
 
@@ -193,6 +239,28 @@ function formatINR(n) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+// Helper function to format quiz answers for email
+function formatQuizAnswers(answers) {
+  if (!answers || typeof answers !== 'object') return 'No answers provided';
+  
+  let formattedAnswers = '';
+  for (const [questionId, score] of Object.entries(answers)) {
+    formattedAnswers += `Question ${questionId}: ${score} points\n`;
+  }
+  return formattedAnswers;
+}
+
+// Helper function to get culture level description
+function getCultureLevelDescription(level) {
+  const descriptions = {
+    'THRIVING ECOSYSTEM': 'Your company demonstrates exceptional culture with high engagement and innovation.',
+    'GROWING GARDEN': 'Your company has a positive culture with room for strategic improvements.',
+    'BUDDING POTENTIAL': 'Your company shows promise but needs focused culture development.',
+    'DORMANT SEED': 'Your company requires significant culture transformation to unlock potential.'
+  };
+  return descriptions[level] || 'Culture assessment completed';
 }
 
 // ROI Calculation Logic
@@ -430,6 +498,139 @@ app.post('/api/roi-calculator', async (req, res) => {
   }
 });
 
+// Culture Quiz submission endpoint
+app.post('/api/culture-quiz', async (req, res) => {
+  try {
+    const {
+      email,
+      answers,
+      totalScore,
+      totalQuestions,
+      answeredCount,
+      cultureLevel
+    } = req.body;
+
+    // Validation
+    if (!email || !answers || totalScore === undefined || !totalQuestions || !answeredCount || !cultureLevel) {
+      return res.status(400).json({ error: 'All required fields must be provided' });
+    }
+
+    // Validate email format
+    const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    }
+
+    // Validate answers is an object
+    if (typeof answers !== 'object' || answers === null) {
+      return res.status(400).json({ error: 'Invalid answers format' });
+    }
+
+    // Validate cultureLevel structure
+    if (!cultureLevel.level || !cultureLevel.description || !cultureLevel.cta) {
+      return res.status(400).json({ error: 'Invalid culture level data' });
+    }
+
+    const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // Calculate metrics
+    const scorePercentage = Math.round((totalScore / (totalQuestions * 14)) * 100);
+    const completionRate = Math.round((answeredCount / totalQuestions) * 100);
+
+    // Save to database
+    const quizData = new CultureQuiz({
+      email,
+      answers: new Map(Object.entries(answers)),
+      totalScore,
+      totalQuestions,
+      answeredCount,
+      cultureLevel,
+      scorePercentage,
+      completionRate,
+      ipAddress,
+      userAgent
+    });
+
+    await quizData.save();
+
+    // Send email notification to owner
+    const emailSubject = `New Culture Quiz Submission - ${cultureLevel.level}`;
+    const emailBody = `
+      <h2>🎯 New Culture Quiz Submission</h2>
+      
+      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="color: #00FFAB;">📊 Quiz Results Summary</h3>
+        <p><strong>Culture Level:</strong> <span style="color: #00FFAB; font-size: 18px;">${cultureLevel.level}</span></p>
+        <p><strong>Score:</strong> ${totalScore} out of ${totalQuestions * 14} points (${scorePercentage}%)</p>
+        <p><strong>Completion Rate:</strong> ${completionRate}% (${answeredCount}/${totalQuestions} questions)</p>
+      </div>
+
+      <h3>👤 User Information</h3>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>IP Address:</strong> ${ipAddress}</p>
+      <p><strong>User Agent:</strong> ${userAgent}</p>
+      <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
+
+      <h3>📝 Culture Assessment</h3>
+      <p><strong>Level:</strong> ${cultureLevel.level}</p>
+      <div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <h4>Description:</h4>
+        ${cultureLevel.description.map(point => `<p>• ${point}</p>`).join('')}
+      </div>
+      
+      <div style="background-color: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0;">
+        <h4>Call to Action:</h4>
+        <p>${cultureLevel.cta.replace(/\*\*/g, '')}</p>
+      </div>
+
+      <h3>🔢 Detailed Answers</h3>
+      <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 12px;">
+        ${Object.entries(answers).map(([questionId, score]) => 
+          `<p>Question ${questionId}: ${score} points</p>`
+        ).join('')}
+      </div>
+
+      <hr style="margin: 30px 0;">
+      
+      <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+        <h4>🚀 Follow-up Opportunity</h4>
+        <p>This user has shown interest in culture assessment. Consider reaching out to discuss:</p>
+        <ul>
+          <li>Detailed culture audit services</li>
+          <li>Employee engagement programs</li>
+          <li>Team building activities</li>
+          <li>Custom culture transformation solutions</li>
+        </ul>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: process.env.SENDER_EMAIL,
+      to: 'info@onethrive.in',
+      subject: emailSubject,
+      html: emailBody,
+      replyTo: email
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Culture quiz submitted successfully',
+      data: {
+        scorePercentage,
+        completionRate,
+        level: cultureLevel.level
+      }
+    });
+
+  } catch (error) {
+    console.error('Error processing culture quiz:', error);
+    res.status(500).json({ error: 'Internal server error. Please try again later.' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -500,40 +701,127 @@ app.get('/api/roi-calculations', async (req, res) => {
   }
 });
 
+// Get all culture quiz submissions
+app.get('/api/culture-quiz-submissions', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const submissions = await CultureQuiz.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .select('-__v');
+
+    const total = await CultureQuiz.countDocuments();
+
+    // Calculate summary statistics
+    const stats = await CultureQuiz.aggregate([
+      {
+        $group: {
+          _id: null,
+          avgScore: { $avg: '$scorePercentage' },
+          avgCompletion: { $avg: '$completionRate' },
+          totalSubmissions: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Get distribution by culture level
+    const levelDistribution = await CultureQuiz.aggregate([
+      {
+        $group: {
+          _id: '$cultureLevel.level',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+
+    res.status(200).json({
+      submissions,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      },
+      statistics: {
+        summary: stats[0] || { avgScore: 0, avgCompletion: 0, totalSubmissions: 0 },
+        levelDistribution
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching culture quiz submissions:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 // Root endpoint
 app.get('/', (req, res) => {
-  res.status(200).json({
-    message: 'OneThrive Unified API is running',
-    timestamp: new Date().toISOString(),
-    endpoints: {
-      health: '/api/health',
-      contact: '/api/contact (POST)',
-      contacts: '/api/contacts (GET)',
-      'roi-calculator': '/api/roi-calculator (POST)',
-      'roi-calculations': '/api/roi-calculations (GET)'
-    }
+    res.status(200).json({
+      message: 'OneThrive API Server is running',
+      timestamp: new Date().toISOString(),
+      endpoints: {
+        contact: '/api/contact',
+        roiCalculator: '/api/roi-calculator',
+        cultureQuiz: '/api/culture-quiz',
+        health: '/api/health'
+      }
+    });
   });
-});
-
-// Error handlers
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-// Start server
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`🚀 OneThrive Unified Server running on port ${PORT}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`📋 Available endpoints:`);
-  console.log(`   - POST /api/contact`);
-  console.log(`   - GET  /api/contacts`);
-  console.log(`   - POST /api/roi-calculator`);
-  console.log(`   - GET  /api/roi-calculations`);
-  console.log(`   - GET  /api/health`);
-});
+  
+  // 404 handler for undefined routes
+  app.use('*', (req, res) => {
+    res.status(404).json({
+      error: 'Route not found',
+      message: 'The requested endpoint does not exist'
+    });
+  });
+  
+  // Global error handler
+  app.use((error, req, res, next) => {
+    console.error('Global error handler:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: 'Something went wrong on our end'
+    });
+  });
+  
+  // Start server
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 API URL: http://localhost:${PORT}`);
+  });
+  
+  // Handle graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('👋 SIGTERM received, shutting down gracefully...');
+    mongoose.connection.close();
+    process.exit(0);
+  });
+  
+  process.on('SIGINT', () => {
+    console.log('👋 SIGINT received, shutting down gracefully...');
+    mongoose.connection.close();
+    process.exit(0);
+  });
+  
+  // Handle unhandled promise rejections
+  process.on('unhandledRejection', (err, promise) => {
+    console.error('❌ Unhandled Promise Rejection:', err);
+    console.error('❌ Promise:', promise);
+    process.exit(1);
+  });
+  
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+    process.exit(1);
+  });
+  
+  module.exports = app;
