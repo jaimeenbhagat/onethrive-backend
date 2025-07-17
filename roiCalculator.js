@@ -26,7 +26,7 @@ const allowedOrigins = [
   'https://onethrive-temp.vercel.app',
   'https://onethrive.in',
   'https://www.onethrive.in',
-  'https://full-website-opal.vercel.app/'
+  'https://full-website-opal.vercel.app'
 ];
 
 app.use(cors({
