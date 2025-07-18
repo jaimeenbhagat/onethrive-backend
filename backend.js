@@ -499,7 +499,7 @@ app.post('/api/roi-calculator', async (req, res) => {
 });
 
 // Culture Quiz submission endpoint
-app.post('/api/culture-quiz', async (req, res) => {
+app.post('/api/culture-quiz-reults', async (req, res) => {
   try {
     const {
       email,
@@ -700,147 +700,9 @@ app.get('/api/roi-calculations', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-// Add this endpoint after your existing /api/culture-quiz endpoint
-// Culture Quiz Results submission endpoint (alias for /api/culture-quiz)
-app.post('/api/culture-quiz-results', async (req, res) => {
-    try {
-      const {
-        email,
-        answers,
-        totalScore,
-        totalQuestions,
-        answeredCount,
-        cultureLevel,
-        maxPossibleScore
-      } = req.body;
-  
-      // Validation
-      if (!email || !answers || totalScore === undefined || !totalQuestions || !answeredCount || !cultureLevel) {
-        return res.status(400).json({ error: 'All required fields must be provided' });
-      }
-  
-      // Validate email format
-      const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Please enter a valid email address' });
-      }
-  
-      // Validate answers is an object
-      if (typeof answers !== 'object' || answers === null) {
-        return res.status(400).json({ error: 'Invalid answers format' });
-      }
-  
-      // Validate cultureLevel structure
-      if (!cultureLevel.level || !cultureLevel.description || !cultureLevel.cta) {
-        return res.status(400).json({ error: 'Invalid culture level data' });
-      }
-  
-      const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
-      const userAgent = req.headers['user-agent'] || 'unknown';
-  
-      // Calculate metrics
-      const scorePercentage = Math.round((totalScore / (maxPossibleScore || totalQuestions * 14)) * 100);
-      const completionRate = Math.round((answeredCount / totalQuestions) * 100);
-  
-      // Save to database using existing CultureQuiz model
-      const quizData = new CultureQuiz({
-        email,
-        answers: new Map(Object.entries(answers)),
-        totalScore,
-        totalQuestions,
-        answeredCount,
-        cultureLevel,
-        scorePercentage,
-        completionRate,
-        ipAddress,
-        userAgent
-      });
-  
-      await quizData.save();
-  
-      // Send email notification to owner
-      const emailSubject = `New Culture Quiz Results - ${cultureLevel.level}`;
-      const emailBody = `
-        <h2>🎯 New Culture Quiz Results</h2>
-        
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3 style="color: #00FFAB;">📊 Quiz Results Summary</h3>
-          <p><strong>Culture Level:</strong> <span style="color: #00FFAB; font-size: 18px;">${cultureLevel.level}</span></p>
-          <p><strong>Score:</strong> ${totalScore} out of ${maxPossibleScore || totalQuestions * 14} points (${scorePercentage}%)</p>
-          <p><strong>Completion Rate:</strong> ${completionRate}% (${answeredCount}/${totalQuestions} questions)</p>
-        </div>
-  
-        <h3>👤 User Information</h3>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>IP Address:</strong> ${ipAddress}</p>
-        <p><strong>User Agent:</strong> ${userAgent}</p>
-        <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
-  
-        <h3>📝 Culture Assessment</h3>
-        <p><strong>Level:</strong> ${cultureLevel.level}</p>
-        <div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          <h4>Description:</h4>
-          ${Array.isArray(cultureLevel.description) ? 
-            cultureLevel.description.map(point => `<p>• ${point}</p>`).join('') : 
-            `<p>${cultureLevel.description}</p>`
-          }
-        </div>
-        
-        <div style="background-color: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0;">
-          <h4>Call to Action:</h4>
-          <p>${cultureLevel.cta.replace(/\*\*/g, '')}</p>
-        </div>
-  
-        <h3>🔢 Detailed Answers</h3>
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 12px;">
-          ${Object.entries(answers).map(([questionId, score]) => 
-            `<p>Question ${questionId}: ${score} points</p>`
-          ).join('')}
-        </div>
-  
-        <hr style="margin: 30px 0;">
-        
-        <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
-          <h4>🚀 Follow-up Opportunity</h4>
-          <p>This user has completed the culture assessment. Consider reaching out to discuss:</p>
-          <ul>
-            <li>Detailed culture audit services</li>
-            <li>Employee engagement programs</li>
-            <li>Team building activities</li>
-            <li>Custom culture transformation solutions</li>
-          </ul>
-        </div>
-      `;
-  
-      const mailOptions = {
-        from: process.env.SENDER_EMAIL,
-        to: 'info@onethrive.in',
-        subject: emailSubject,
-        html: emailBody,
-        replyTo: email
-      };
-  
-      await transporter.sendMail(mailOptions);
-  
-      res.status(200).json({ 
-        success: true, 
-        message: 'Culture quiz results submitted successfully',
-        data: {
-          scorePercentage,
-          completionRate,
-          level: cultureLevel.level,
-          totalScore,
-          maxPossibleScore: maxPossibleScore || totalQuestions * 14
-        }
-      });
-  
-    } catch (error) {
-      console.error('Error processing culture quiz results:', error);
-      res.status(500).json({ error: 'Internal server error. Please try again later.' });
-    }
-  });
+
 // Get all culture quiz submissions
-app.get('/api/culture-quiz-submissions', async (req, res) => {
+app.get('/api/culture-quiz', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
