@@ -499,7 +499,7 @@ app.post('/api/roi-calculator', async (req, res) => {
 });
 
 // Culture Quiz submission endpoint
-app.post('/api/culture-quiz-reults', async (req, res) => {
+app.post('/api/culture-quiz-results', async (req, res) => {
   try {
     const {
       email,
