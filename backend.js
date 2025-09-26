@@ -4,6 +4,8 @@ const cors = require('cors');
 const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const { SitemapStream, streamToPromise } = require('sitemap');
+const { Readable } = require('stream');
 require('dotenv').config();
 
 const app = express();
@@ -957,3 +959,37 @@ app.get('/', (req, res) => {
   });
   
   module.exports = app;
+
+router.get('/sitemap.xml', async (req, res) => {
+  try {
+    const links = [
+      // Core pages
+      { url: '/', changefreq: 'daily', priority: 1.0 },
+      { url: '/about', changefreq: 'monthly', priority: 0.7 },
+      { url: '/services', changefreq: 'weekly', priority: 0.8 },
+      { url: '/contact', changefreq: 'monthly', priority: 0.6 },
+
+      // Resources
+      { url: '/blogs', changefreq: 'weekly', priority: 0.7 },
+      { url: '/roi-calculator', changefreq: 'monthly', priority: 0.6 },
+      { url: '/culture-quiz', changefreq: 'monthly', priority: 0.6 },
+
+      // Policies
+      { url: '/privacy-policy', changefreq: 'yearly', priority: 0.3 },
+      { url: '/cancellation-refund', changefreq: 'yearly', priority: 0.3 },
+      { url: '/terms-conditions', changefreq: 'yearly', priority: 0.3 },
+    ];
+
+    // Generate sitemap
+    res.header('Content-Type', 'application/xml');
+    const stream = new SitemapStream({ hostname: 'https://www.onethrive.com' });
+    const xml = await streamToPromise(Readable.from(links).pipe(stream));
+    res.send(xml.toString());
+  } catch (err) {
+    console.error('Sitemap generation error:', err);
+    res.status(500).end();
+  }
+});
+
+module.exports = router;
+
