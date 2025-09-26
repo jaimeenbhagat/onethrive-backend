@@ -960,7 +960,12 @@ app.get('/', (req, res) => {
   
   module.exports = app;
 
-router.get('/sitemap.xml', async (req, res) => {
+// Replace this
+// router.get('/sitemap.xml', async (req, res) => { ... });
+// module.exports = router;
+
+// With this
+app.get('/sitemap.xml', async (req, res) => {
   try {
     const links = [
       // Core pages
@@ -980,7 +985,6 @@ router.get('/sitemap.xml', async (req, res) => {
       { url: '/terms-conditions', changefreq: 'yearly', priority: 0.3 },
     ];
 
-    // Generate sitemap
     res.header('Content-Type', 'application/xml');
     const stream = new SitemapStream({ hostname: 'https://www.onethrive.com' });
     const xml = await streamToPromise(Readable.from(links).pipe(stream));
@@ -991,5 +995,4 @@ router.get('/sitemap.xml', async (req, res) => {
   }
 });
 
-module.exports = router;
 
