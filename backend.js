@@ -9,7 +9,7 @@ const { Readable } = require('stream');
 require('dotenv').config();
 
 const app = express();
-
+app.set('trust proxy', 1);
 // Security middleware
 app.use(helmet());
 
@@ -28,7 +28,8 @@ const allowedOrigins = [
   'https://onethrive-temp.vercel.app',
   'https://onethrive.in',
   'https://www.onethrive.in',
-  'https://full-website-opal.vercel.app'
+  'https://full-website-opal.vercel.app',
+  "*"
 ];
 
 app.use(cors({
@@ -963,36 +964,4 @@ app.get('/', (req, res) => {
 // Replace this
 // router.get('/sitemap.xml', async (req, res) => { ... });
 // module.exports = router;
-
-// With this
-app.get('/sitemap.xml', async (req, res) => {
-  try {
-    const links = [
-      // Core pages
-      { url: '/', changefreq: 'daily', priority: 1.0 },
-      { url: '/about', changefreq: 'monthly', priority: 0.7 },
-      { url: '/services', changefreq: 'weekly', priority: 0.8 },
-      { url: '/contact', changefreq: 'monthly', priority: 0.6 },
-
-      // Resources
-      { url: '/blogs', changefreq: 'weekly', priority: 0.7 },
-      { url: '/roi-calculator', changefreq: 'monthly', priority: 0.6 },
-      { url: '/culture-quiz', changefreq: 'monthly', priority: 0.6 },
-
-      // Policies
-      { url: '/privacy-policy', changefreq: 'yearly', priority: 0.3 },
-      { url: '/cancellation-refund', changefreq: 'yearly', priority: 0.3 },
-      { url: '/terms-conditions', changefreq: 'yearly', priority: 0.3 },
-    ];
-
-    res.header('Content-Type', 'application/xml');
-    const stream = new SitemapStream({ hostname: 'https://www.onethrive.com' });
-    const xml = await streamToPromise(Readable.from(links).pipe(stream));
-    res.send(xml.toString());
-  } catch (err) {
-    console.error('Sitemap generation error:', err);
-    res.status(500).end();
-  }
-});
-
 
