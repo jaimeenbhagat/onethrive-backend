@@ -72,6 +72,79 @@ mongoose.connect(process.env.MONGODB_URI)
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // ========================
+// EMAIL CONFIGURATION
+// ========================
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.SENDER_EMAIL,
+    pass: process.env.EMAIL_PASSWORD
+  },
+  // Add connection timeout and retry settings
+  connectionTimeout: 60000, // 60 seconds
+  greetingTimeout: 30000,   // 30 seconds
+  socketTimeout: 60000,     // 60 seconds
+  // Enable secure connection
+  secure: true,
+  port: 465,
+  // Add retry configuration
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 10
+});
+
+// Add a more robust verification with timeout
+const verifyEmailConfig = () => {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Email verification timeout'));
+    }, 10000); // 10 second timeout for verification
+
+    transporter.verify((error, success) => {
+      clearTimeout(timeout);
+      if (error) {
+        console.error('❌ Email configuration error:', error.message);
+        resolve(false); // Don't reject, just return false
+      } else {
+        console.log('✅ Email server is ready to send messages');
+        resolve(true);
+      }
+    });
+  });
+};
+
+// Verify email configuration on startup (non-blocking)
+verifyEmailConfig().catch(err => {
+  console.warn('⚠️ Email verification failed:', err.message);
+  console.warn('⚠️ Email functionality may be limited');
+});
+
+// Helper function to send email with retry logic
+const sendEmailWithRetry = async (mailOptions, maxRetries = 3) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📧 Attempting to send email (attempt ${attempt}/${maxRetries})`);
+      const result = await transporter.sendMail(mailOptions);
+      console.log('✅ Email sent successfully:', result.messageId);
+      return result;
+    } catch (error) {
+      console.error(`❌ Email send attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        console.error('❌ All email send attempts failed');
+        throw error;
+      }
+      
+      // Wait before retry (exponential backoff)
+      const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+      console.log(`⏳ Waiting ${delay}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
+// ========================
 // CONTACT FORM SCHEMA & LOGIC
 // ========================
 
@@ -196,23 +269,6 @@ const cultureQuizSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const CultureQuiz = mongoose.model('CultureQuiz', cultureQuizSchema);
-
-// ========================
-// EMAIL CONFIGURATION
-// ========================
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.SENDER_EMAIL,
-    pass: process.env.EMAIL_PASSWORD
-  }
-});
-
-transporter.verify((error, success) => {
-  if (error) console.error('❌ Email configuration error:', error);
-  else console.log('✅ Email server is ready to send messages');
-});
 
 // ========================
 // HELPER FUNCTIONS
@@ -363,8 +419,11 @@ app.post('/api/contact', async (req, res) => {
       ipAddress
     });
 
+    // Save to database first (this should always work)
     await contactData.save();
+    console.log('✅ Contact data saved to database');
 
+    // Try to send email (non-blocking - don't fail the request if email fails)
     const emailSubject = `New Contact Form Submission - ${fullName}`;
     const emailBody = `
       <h2>New Contact Form Submission</h2>
@@ -386,13 +445,36 @@ app.post('/api/contact', async (req, res) => {
       replyTo: workEmail
     };
 
-    await transporter.sendMail(mailOptions);
+    // Send email with retry logic (don't await - make it non-blocking)
+    sendEmailWithRetry(mailOptions)
+      .then(() => {
+        console.log('✅ Contact form email sent successfully');
+      })
+      .catch((emailError) => {
+        console.error('❌ Failed to send contact form email after all retries:', emailError.message);
+        // Log to database or external service for manual follow-up if needed
+      });
 
-    res.status(200).json({ success: true, message: 'Contact form submitted successfully' });
+    // Return success immediately after saving to database
+    res.status(200).json({ 
+      success: true, 
+      message: 'Contact form submitted successfully' 
+    });
 
   } catch (error) {
     console.error('Error processing contact form:', error);
-    res.status(500).json({ error: 'Internal server error. Please try again later.' });
+    
+    // Provide more specific error messages
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ 
+        error: 'Invalid data provided',
+        details: error.message 
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Internal server error. Please try again later.' 
+    });
   }
 });
 
@@ -450,8 +532,9 @@ app.post('/api/roi-calculator', async (req, res) => {
     });
 
     await roiData.save();
+    console.log('✅ ROI data saved to database');
 
-    // Send email notification
+    // Send email notification with retry logic (non-blocking)
     const emailSubject = `New ROI Calculator Submission - ${email}`;
     const emailBody = `
       <h2>New ROI Calculator Submission</h2>
@@ -487,8 +570,16 @@ app.post('/api/roi-calculator', async (req, res) => {
       replyTo: email
     };
 
-    await transporter.sendMail(mailOptions);
+    // Send email with retry logic (non-blocking)
+    sendEmailWithRetry(mailOptions)
+      .then(() => {
+        console.log('✅ ROI calculator email sent successfully');
+      })
+      .catch((emailError) => {
+        console.error('❌ Failed to send ROI calculator email after all retries:', emailError.message);
+      });
 
+    // Return success immediately after saving to database
     res.status(200).json({ 
       success: true, 
       message: 'ROI calculation submitted successfully',
@@ -556,8 +647,9 @@ app.post('/api/culture-quiz-results', async (req, res) => {
     });
 
     await quizData.save();
+    console.log('✅ Culture quiz data saved to database');
 
-    // Send email notification to owner
+    // Send email notification to owner with retry logic (non-blocking)
     const emailSubject = `New Culture Quiz Submission - ${cultureLevel.level}`;
     const emailBody = `
       <h2>🎯 New Culture Quiz Submission</h2>
@@ -616,8 +708,16 @@ app.post('/api/culture-quiz-results', async (req, res) => {
       replyTo: email
     };
 
-    await transporter.sendMail(mailOptions);
+    // Send email with retry logic (non-blocking)
+    sendEmailWithRetry(mailOptions)
+      .then(() => {
+        console.log('✅ Culture quiz email sent successfully');
+      })
+      .catch((emailError) => {
+        console.error('❌ Failed to send culture quiz email after all retries:', emailError.message);
+      });
 
+    // Return success immediately after saving to database
     res.status(200).json({ 
       success: true, 
       message: 'Culture quiz submitted successfully',
@@ -762,6 +862,7 @@ app.get('/api/culture-quiz', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 // Root endpoint
 app.get('/', (req, res) => {
     res.status(200).json({
@@ -775,193 +876,199 @@ app.get('/', (req, res) => {
       }
     });
   });
-  app.post('/api/culture-quiz-email', async (req, res) => {
-    try {
-      const { email, quizType, timestamp } = req.body;
-  
-      // Validation
-      if (!email) {
-        return res.status(400).json({ error: 'Email is required' });
-      }
-  
-      // Validate email format
-      const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Please enter a valid email address' });
-      }
-  
-      const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
-      const userAgent = req.headers['user-agent'] || 'unknown';
-  
-      // Create a simple schema for email collection if it doesn't exist
-      const cultureQuizEmailSchema = new mongoose.Schema({
-        email: {
-          type: String,
-          required: true,
-          trim: true,
-          lowercase: true,
-          match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
-        },
-        quizType: { type: String, default: 'culture_quiz' },
-        submittedAt: { type: Date, default: Date.now },
-        ipAddress: { type: String },
-        userAgent: { type: String }
-      }, { timestamps: true });
-  
-      // Check if model already exists to avoid re-compilation error
-      const CultureQuizEmail = mongoose.models.CultureQuizEmail || mongoose.model('CultureQuizEmail', cultureQuizEmailSchema);
-  
-      // Save email to database
-      const emailData = new CultureQuizEmail({
-        email,
-        quizType: quizType || 'culture_quiz',
-        ipAddress,
-        userAgent
-      });
-  
-      await emailData.save();
-  
-      // Send email notification to owner
-      const emailSubject = `New Culture Quiz Email Submission - ${email}`;
-      const emailBody = `
-        <h2>📧 New Culture Quiz Email Submission</h2>
-        
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3 style="color: #00FFAB;">📊 Email Collection</h3>
-          <p><strong>Email:</strong> <span style="color: #00FFAB; font-size: 18px;">${email}</span></p>
-          <p><strong>Quiz Type:</strong> ${quizType || 'culture_quiz'}</p>
-          <p><strong>Timestamp:</strong> ${timestamp || new Date().toISOString()}</p>
-        </div>
-  
-        <h3>👤 User Information</h3>
-        <p><strong>IP Address:</strong> ${ipAddress}</p>
-        <p><strong>User Agent:</strong> ${userAgent}</p>
-        <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
-  
-        <hr style="margin: 30px 0;">
-        
-        <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
-          <h4>🚀 Follow-up Opportunity</h4>
-          <p>This user has provided their email for culture quiz access. Consider reaching out to discuss:</p>
-          <ul>
-            <li>Culture assessment services</li>
-            <li>Employee engagement programs</li>
-            <li>Team building activities</li>
-            <li>Custom culture transformation solutions</li>
-          </ul>
-        </div>
-      `;
-  
-      const mailOptions = {
-        from: process.env.SENDER_EMAIL,
-        to: 'info@onethrive.in',
-        subject: emailSubject,
-        html: emailBody,
-        replyTo: email
-      };
-  
-      await transporter.sendMail(mailOptions);
-  
-      res.status(200).json({ 
-        success: true, 
-        message: 'Email submitted successfully for culture quiz access'
-      });
-  
-    } catch (error) {
-      console.error('Error processing culture quiz email:', error);
-      res.status(500).json({ error: 'Internal server error. Please try again later.' });
-    }
-  });
-  
-  // Optional: Add endpoint to get all culture quiz email submissions
-  app.get('/api/culture-quiz-emails', async (req, res) => {
-    try {
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-      const skip = (page - 1) * limit;
-  
-      // Check if model exists
-      const CultureQuizEmail = mongoose.models.CultureQuizEmail;
-      if (!CultureQuizEmail) {
-        return res.status(404).json({ error: 'No email submissions found' });
-      }
-  
-      const emails = await CultureQuizEmail.find()
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .select('-__v');
-  
-      const total = await CultureQuizEmail.countDocuments();
-  
-      res.status(200).json({
-        emails,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching culture quiz emails:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-  // 404 handler for undefined routes
-  app.use('*', (req, res) => {
-    res.status(404).json({
-      error: 'Route not found',
-      message: 'The requested endpoint does not exist'
-    });
-  });
-  
-  // Global error handler
-  app.use((error, req, res, next) => {
-    console.error('Global error handler:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      message: 'Something went wrong on our end'
-    });
-  });
-  
-  // Start server
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
-    console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔗 API URL: http://localhost:${PORT}`);
-  });
-  
-  // Handle graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('👋 SIGTERM received, shutting down gracefully...');
-    mongoose.connection.close();
-    process.exit(0);
-  });
-  
-  process.on('SIGINT', () => {
-    console.log('👋 SIGINT received, shutting down gracefully...');
-    mongoose.connection.close();
-    process.exit(0);
-  });
-  
-  // Handle unhandled promise rejections
-  process.on('unhandledRejection', (err, promise) => {
-    console.error('❌ Unhandled Promise Rejection:', err);
-    console.error('❌ Promise:', promise);
-    process.exit(1);
-  });
-  
-  // Handle uncaught exceptions
-  process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err);
-    process.exit(1);
-  });
-  
-  module.exports = app;
 
-// Replace this
-// router.get('/sitemap.xml', async (req, res) => { ... });
-// module.exports = router;
+app.post('/api/culture-quiz-email', async (req, res) => {
+  try {
+    const { email, quizType, timestamp } = req.body;
 
+    // Validation
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    }
+
+    const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // Create a simple schema for email collection if it doesn't exist
+    const cultureQuizEmailSchema = new mongoose.Schema({
+      email: {
+        type: String,
+        required: true,
+        trim: true,
+        lowercase: true,
+        match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+      },
+      quizType: { type: String, default: 'culture_quiz' },
+      submittedAt: { type: Date, default: Date.now },
+      ipAddress: { type: String },
+      userAgent: { type: String }
+    }, { timestamps: true });
+
+    // Check if model already exists to avoid re-compilation error
+    const CultureQuizEmail = mongoose.models.CultureQuizEmail || mongoose.model('CultureQuizEmail', cultureQuizEmailSchema);
+
+    // Save email to database
+    const emailData = new CultureQuizEmail({
+      email,
+      quizType: quizType || 'culture_quiz',
+      ipAddress,
+      userAgent
+    });
+
+    await emailData.save();
+    console.log('✅ Culture quiz email data saved to database');
+
+    // Send email notification to owner with retry logic (non-blocking)
+    const emailSubject = `New Culture Quiz Email Submission - ${email}`;
+    const emailBody = `
+      <h2>📧 New Culture Quiz Email Submission</h2>
+      
+      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="color: #00FFAB;">📊 Email Collection</h3>
+        <p><strong>Email:</strong> <span style="color: #00FFAB; font-size: 18px;">${email}</span></p>
+        <p><strong>Quiz Type:</strong> ${quizType || 'culture_quiz'}</p>
+        <p><strong>Timestamp:</strong> ${timestamp || new Date().toISOString()}</p>
+      </div>
+
+      <h3>👤 User Information</h3>
+      <p><strong>IP Address:</strong> ${ipAddress}</p>
+      <p><strong>User Agent:</strong> ${userAgent}</p>
+      <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
+
+      <hr style="margin: 30px 0;">
+      
+      <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+        <h4>🚀 Follow-up Opportunity</h4>
+        <p>This user has provided their email for culture quiz access. Consider reaching out to discuss:</p>
+        <ul>
+          <li>Culture assessment services</li>
+          <li>Employee engagement programs</li>
+          <li>Team building activities</li>
+          <li>Custom culture transformation solutions</li>
+        </ul>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: process.env.SENDER_EMAIL,
+      to: 'info@onethrive.in',
+      subject: emailSubject,
+      html: emailBody,
+      replyTo: email
+    };
+
+    // Send email with retry logic (non-blocking)
+    sendEmailWithRetry(mailOptions)
+      .then(() => {
+        console.log('✅ Culture quiz email notification sent successfully');
+      })
+      .catch((emailError) => {
+        console.error('❌ Failed to send culture quiz email notification after all retries:', emailError.message);
+      });
+
+    // Return success immediately after saving to database
+    res.status(200).json({ 
+      success: true, 
+      message: 'Email submitted successfully for culture quiz access'
+    });
+
+  } catch (error) {
+    console.error('Error processing culture quiz email:', error);
+    res.status(500).json({ error: 'Internal server error. Please try again later.' });
+  }
+});
+
+// Optional: Add endpoint to get all culture quiz email submissions
+app.get('/api/culture-quiz-emails', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Check if model exists
+    const CultureQuizEmail = mongoose.models.CultureQuizEmail;
+    if (!CultureQuizEmail) {
+      return res.status(404).json({ error: 'No email submissions found' });
+    }
+
+    const emails = await CultureQuizEmail.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .select('-__v');
+
+    const total = await CultureQuizEmail.countDocuments();
+
+    res.status(200).json({
+      emails,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching culture quiz emails:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 404 handler for undefined routes
+app.use('*', (req, res) => {
+  res.status(404).json({
+    error: 'Route not found',
+    message: 'The requested endpoint does not exist'
+  });
+});
+
+// Global error handler
+app.use((error, req, res, next) => {
+  console.error('Global error handler:', error);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: 'Something went wrong on our end'
+  });
+});
+
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 API URL: http://localhost:${PORT}`);
+});
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('👋 SIGTERM received, shutting down gracefully...');
+  mongoose.connection.close();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('👋 SIGINT received, shutting down gracefully...');
+  mongoose.connection.close();
+  process.exit(0);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err, promise) => {
+  console.error('❌ Unhandled Promise Rejection:', err);
+  console.error('❌ Promise:', promise);
+  process.exit(1);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
+});
+
+module.exports = app;
