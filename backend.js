@@ -8,6 +8,9 @@ const { SitemapStream, streamToPromise } = require('sitemap');
 const { Readable } = require('stream');
 require('dotenv').config();
 
+// Import fetch for Node.js (built-in in Node 18+, fallback for older versions)
+const fetch = globalThis.fetch || require('node-fetch');
+
 const app = express();
 app.set('trust proxy', 1);
 // Security middleware
@@ -1020,6 +1023,16 @@ app.get('/api/culture-quiz-emails', async (req, res) => {
   }
 });
 
+// Keep-alive endpoint for Render free tier
+app.get('/api/keep-alive', (req, res) => {
+  res.status(200).json({
+    status: 'alive',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    message: 'Server is awake and running'
+  });
+});
+
 // 404 handler for undefined routes
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -1037,12 +1050,53 @@ app.use((error, req, res, next) => {
   });
 });
 
+// Self-ping function to keep Render service awake
+const keepAlive = () => {
+  // Only run in production (Render environment)
+  if (process.env.NODE_ENV === 'production' || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
+    // Try to get the service URL from environment or use the default
+    const serviceUrl = process.env.RENDER_EXTERNAL_URL || 'https://onethrive-backend-n8fc.onrender.com';
+    
+    console.log(`🏓 Sending keep-alive ping to ${serviceUrl}/api/keep-alive`);
+    
+    fetch(`${serviceUrl}/api/keep-alive`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'OneThrive-KeepAlive/1.0'
+      }
+    })
+      .then(response => {
+        if (response.ok) {
+          console.log('✅ Keep-alive ping successful - Render service staying awake');
+        } else {
+          console.log('⚠️ Keep-alive ping failed with status:', response.status);
+        }
+      })
+      .catch(error => {
+        console.log('❌ Keep-alive ping error:', error.message);
+        console.log('❌ This is normal if the service is sleeping - it will wake up on next request');
+      });
+  }
+};
+
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API URL: http://localhost:${PORT}`);
+  
+  // Start keep-alive pings for production (Render)
+  if (process.env.NODE_ENV === 'production' || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
+    console.log('🏓 Starting keep-alive service to prevent Render sleep...');
+    console.log('🏓 Will ping every 10 minutes to keep service awake');
+    // Ping every 10 minutes (600,000 ms)
+    setInterval(keepAlive, 10 * 60 * 1000);
+    // Initial ping after 1 minute to ensure everything is working
+    setTimeout(keepAlive, 60 * 1000);
+  } else {
+    console.log('🏠 Running in development mode - keep-alive disabled');
+  }
 });
 
 // Handle graceful shutdown
