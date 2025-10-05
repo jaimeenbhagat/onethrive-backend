@@ -11,6 +11,14 @@ require('dotenv').config();
 // Import fetch for Node.js (built-in in Node 18+, fallback for older versions)
 const fetch = globalThis.fetch || require('node-fetch');
 
+// Environment detection and logging
+const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RENDER || !!process.env.RENDER_EXTERNAL_URL;
+console.log('🔧 Environment Detection:');
+console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'undefined'}`);
+console.log(`   RENDER: ${process.env.RENDER || 'undefined'}`);
+console.log(`   RENDER_EXTERNAL_URL: ${process.env.RENDER_EXTERNAL_URL || 'undefined'}`);
+console.log(`   Is Production: ${isProduction}`);
+
 const app = express();
 app.set('trust proxy', 1);
 // Security middleware
@@ -78,24 +86,53 @@ mongoose.connect(process.env.MONGODB_URI)
 // EMAIL CONFIGURATION
 // ========================
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.SENDER_EMAIL,
-    pass: process.env.EMAIL_PASSWORD
-  },
-  // Add connection timeout and retry settings
-  connectionTimeout: 60000, // 60 seconds
-  greetingTimeout: 30000,   // 30 seconds
-  socketTimeout: 60000,     // 60 seconds
-  // Enable secure connection
-  secure: true,
-  port: 465,
-  // Add retry configuration
-  pool: true,
-  maxConnections: 5,
-  maxMessages: 10
-});
+// Create transporter with production-optimized settings
+const createTransporter = () => {
+  console.log(`📧 Creating email transporter for ${isProduction ? 'production' : 'development'} environment`);
+  
+  if (isProduction) {
+    // Production settings for Render - more aggressive timeouts
+    console.log('📧 Using production SMTP settings (STARTTLS on port 587)');
+    return nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // Use STARTTLS instead of SSL
+      auth: {
+        user: process.env.SENDER_EMAIL,
+        pass: process.env.EMAIL_PASSWORD
+      },
+      connectionTimeout: 30000,  // 30 seconds (reduced)
+      greetingTimeout: 15000,    // 15 seconds (reduced)
+      socketTimeout: 30000,      // 30 seconds (reduced)
+      pool: false,               // Disable pooling for better compatibility
+      maxConnections: 1,         // Single connection
+      tls: {
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3'
+      }
+    });
+  } else {
+    // Development settings
+    console.log('📧 Using development SMTP settings (SSL on port 465)');
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.SENDER_EMAIL,
+        pass: process.env.EMAIL_PASSWORD
+      },
+      connectionTimeout: 60000,
+      greetingTimeout: 30000,
+      socketTimeout: 60000,
+      secure: true,
+      port: 465,
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 10
+    });
+  }
+};
+
+const transporter = createTransporter();
 
 // Add a more robust verification with timeout
 const verifyEmailConfig = () => {
@@ -123,24 +160,38 @@ verifyEmailConfig().catch(err => {
   console.warn('⚠️ Email functionality may be limited');
 });
 
-// Helper function to send email with retry logic
+// Helper function to send email with retry logic and timeout handling
 const sendEmailWithRetry = async (mailOptions, maxRetries = 3) => {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`📧 Attempting to send email (attempt ${attempt}/${maxRetries})`);
-      const result = await transporter.sendMail(mailOptions);
+      
+      // Create a timeout promise for the email send
+      const emailPromise = transporter.sendMail(mailOptions);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Email send timeout')), isProduction ? 25000 : 45000);
+      });
+      
+      // Race between email send and timeout
+      const result = await Promise.race([emailPromise, timeoutPromise]);
       console.log('✅ Email sent successfully:', result.messageId);
       return result;
     } catch (error) {
       console.error(`❌ Email send attempt ${attempt} failed:`, error.message);
+      
+      // If it's a connection timeout, try to recreate transporter for next attempt
+      if (error.message.includes('timeout') || error.message.includes('Connection timeout')) {
+        console.log('🔄 Connection timeout detected - will retry with fresh connection');
+      }
       
       if (attempt === maxRetries) {
         console.error('❌ All email send attempts failed');
         throw error;
       }
       
-      // Wait before retry (exponential backoff)
-      const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+      // Shorter delays for production to retry faster
+      const baseDelay = isProduction ? 1000 : 2000;
+      const delay = Math.pow(2, attempt - 1) * baseDelay; // 1s, 2s, 4s (prod) or 2s, 4s, 8s (dev)
       console.log(`⏳ Waiting ${delay}ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
