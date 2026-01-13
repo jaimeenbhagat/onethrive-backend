@@ -377,7 +377,7 @@ app.post('/api/contact', async (req, res) => {
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: 'info@onethrive.in',
+      to: 'jaimeenbhagat5@gmail.com',
       subject: emailSubject,
       html: emailBody,
       replyTo: workEmail
@@ -478,7 +478,7 @@ app.post('/api/roi-calculator', async (req, res) => {
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: 'info@onethrive.in',
+      to: 'jaimeenbhagat5@gmail.com',
       subject: emailSubject,
       html: emailBody,
       replyTo: email
@@ -607,7 +607,7 @@ app.post('/api/culture-quiz-results', async (req, res) => {
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: 'info@onethrive.in',
+      to: 'jaimeenbhagat5@gmail.com',
       subject: emailSubject,
       html: emailBody,
       replyTo: email
@@ -851,7 +851,7 @@ app.get('/', (req, res) => {
   
       const mailOptions = {
         from: process.env.SENDER_EMAIL,
-        to: 'info@onethrive.in',
+        to: 'jaimeenbhagat5@gmail.com',
         subject: emailSubject,
         html: emailBody,
         replyTo: email
