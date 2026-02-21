@@ -362,6 +362,10 @@ app.post('/api/contact', async (req, res) => {
 
     await contactData.save();
 
+    // Respond immediately after saving — don't wait for email
+    res.status(200).json({ success: true, message: 'Contact form submitted successfully' });
+
+    // Send email in background (non-blocking)
     const emailSubject = `New Contact Form Submission - ${fullName}`;
     const emailBody = `
       <h2>New Contact Form Submission</h2>
@@ -377,15 +381,15 @@ app.post('/api/contact', async (req, res) => {
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: 'jaimeenbhagat5@gmail.com',
+      to: 'info@onethrive.in',
       subject: emailSubject,
       html: emailBody,
       replyTo: workEmail
     };
 
-    await transporter.sendMail(mailOptions);
-
-    res.status(200).json({ success: true, message: 'Contact form submitted successfully' });
+    transporter.sendMail(mailOptions)
+      .then(() => console.log(`✅ Contact email sent for ${fullName}`))
+      .catch(err => console.error('❌ Failed to send contact email:', err.message));
 
   } catch (error) {
     console.error('Error processing contact form:', error);
@@ -448,7 +452,14 @@ app.post('/api/roi-calculator', async (req, res) => {
 
     await roiData.save();
 
-    // Send email notification
+    // Respond immediately after saving — don't wait for email
+    res.status(200).json({ 
+      success: true, 
+      message: 'ROI calculation submitted successfully',
+      results: calculatedResults
+    });
+
+    // Send email in background (non-blocking)
     const emailSubject = `New ROI Calculator Submission - ${email}`;
     const emailBody = `
       <h2>New ROI Calculator Submission</h2>
@@ -478,19 +489,15 @@ app.post('/api/roi-calculator', async (req, res) => {
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: 'jaimeenbhagat5@gmail.com',
+      to: 'info@onethrive.in',
       subject: emailSubject,
       html: emailBody,
       replyTo: email
     };
 
-    await transporter.sendMail(mailOptions);
-
-    res.status(200).json({ 
-      success: true, 
-      message: 'ROI calculation submitted successfully',
-      results: calculatedResults
-    });
+    transporter.sendMail(mailOptions)
+      .then(() => console.log(`✅ ROI email sent for ${email}`))
+      .catch(err => console.error('❌ Failed to send ROI email:', err.message));
 
   } catch (error) {
     console.error('Error processing ROI calculator:', error);
@@ -554,7 +561,18 @@ app.post('/api/culture-quiz-results', async (req, res) => {
 
     await quizData.save();
 
-    // Send email notification to owner
+    // Respond immediately after saving — don't wait for email
+    res.status(200).json({ 
+      success: true, 
+      message: 'Culture quiz submitted successfully',
+      data: {
+        scorePercentage,
+        completionRate,
+        level: cultureLevel.level
+      }
+    });
+
+    // Send email in background (non-blocking)
     const emailSubject = `New Culture Quiz Submission - ${cultureLevel.level}`;
     const emailBody = `
       <h2>🎯 New Culture Quiz Submission</h2>
@@ -607,23 +625,15 @@ app.post('/api/culture-quiz-results', async (req, res) => {
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
-      to: 'jaimeenbhagat5@gmail.com',
+      to: 'info@onethrive.in',
       subject: emailSubject,
       html: emailBody,
       replyTo: email
     };
 
-    await transporter.sendMail(mailOptions);
-
-    res.status(200).json({ 
-      success: true, 
-      message: 'Culture quiz submitted successfully',
-      data: {
-        scorePercentage,
-        completionRate,
-        level: cultureLevel.level
-      }
-    });
+    transporter.sendMail(mailOptions)
+      .then(() => console.log(`✅ Culture quiz email sent for ${email}`))
+      .catch(err => console.error('❌ Failed to send culture quiz email:', err.message));
 
   } catch (error) {
     console.error('Error processing culture quiz:', error);
@@ -851,18 +861,22 @@ app.get('/', (req, res) => {
   
       const mailOptions = {
         from: process.env.SENDER_EMAIL,
-        to: 'jaimeenbhagat5@gmail.com',
+        to: 'info@onethrive.in',
         subject: emailSubject,
         html: emailBody,
         replyTo: email
       };
   
-      await transporter.sendMail(mailOptions);
-  
+      // Respond immediately — don't wait for email
       res.status(200).json({ 
         success: true, 
         message: 'Email submitted successfully for culture quiz access'
       });
+
+      // Send email in background (non-blocking)
+      transporter.sendMail(mailOptions)
+        .then(() => console.log(`✅ Culture quiz email notification sent for ${email}`))
+        .catch(err => console.error('❌ Failed to send culture quiz email notification:', err.message));
   
     } catch (error) {
       console.error('Error processing culture quiz email:', error);
