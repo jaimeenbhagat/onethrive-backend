@@ -398,7 +398,7 @@ app.post('/api/contact', async (req, res) => {
       return res.status(400).json({ error: 'Full name and email are required' });
     }
 
-    const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+    const ipAddress = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
 
     const contactData = new Contact({
       fullName,
@@ -468,7 +468,7 @@ app.post('/api/roi-calculator', async (req, res) => {
       return res.status(400).json({ error: 'Engagement score must be between 1 and 10' });
     }
 
-    const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+    const ipAddress = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
 
     // Calculate ROI results
     const calculatedResults = calculateROI({
@@ -575,7 +575,7 @@ app.post('/api/culture-quiz-results', async (req, res) => {
       return res.status(400).json({ error: 'Invalid culture level data' });
     }
 
-    const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+    const ipAddress = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
 
     // Calculate metrics
@@ -827,7 +827,7 @@ app.get('/', (req, res) => {
         return res.status(400).json({ error: 'Please enter a valid email address' });
       }
   
-      const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+      const ipAddress = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
       const userAgent = req.headers['user-agent'] || 'unknown';
   
       // Create a simple schema for email collection if it doesn't exist
