@@ -195,34 +195,68 @@ const cultureQuizSchema = new mongoose.Schema({
 const CultureQuiz = mongoose.model('CultureQuiz', cultureQuizSchema);
 
 // ========================
-// EMAIL CONFIGURATION (Brevo SMTP - port 465 SSL, works on Render)
+// EMAIL CONFIGURATION
+// - If BREVO_API_KEY is set: uses Brevo HTTP API (works on Render, no port issues)
+// - Otherwise: falls back to Brevo SMTP port 587 (works locally)
 // ========================
 
-const transporter = nodemailer.createTransport({
+const smtpTransporter = nodemailer.createTransport({
   host: 'smtp-relay.brevo.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.BREVO_SMTP_USER,
     pass: process.env.BREVO_SMTP_PASS
   }
 });
 
-transporter.verify((error) => {
-  if (error) console.error('❌ Email configuration error:', error.message);
-  else console.log('✅ Email server is ready (Brevo SMTP port 465)');
-});
-
 async function sendEmail({ to, subject, html, replyTo }) {
-  // `to` can be a string or an array of addresses
-  const recipients = Array.isArray(to) ? to.join(', ') : to;
-  return transporter.sendMail({
+  const recipients = Array.isArray(to) ? to : [to];
+
+  // Use Brevo HTTP API if key is available (required on Render)
+  if (process.env.BREVO_API_KEY) {
+    const payload = {
+      sender: { name: 'OneThrive', email: process.env.SENDER_EMAIL },
+      to: recipients.map(email => ({ email })),
+      subject,
+      htmlContent: html,
+      ...(replyTo && { replyTo: { email: replyTo } })
+    };
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': process.env.BREVO_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(`Brevo API error ${response.status}: ${JSON.stringify(data)}`);
+    return data;
+  }
+
+  // Fallback: SMTP (works locally on port 587)
+  return smtpTransporter.sendMail({
     from: `"OneThrive" <${process.env.SENDER_EMAIL}>`,
-    to: recipients,
+    to: recipients.join(', '),
     subject,
     html,
     ...(replyTo && { replyTo })
   });
+}
+
+smtpTransporter.verify((error) => {
+  if (error) console.warn('⚠️  SMTP not available (expected on Render):', error.message);
+  else console.log('✅ SMTP ready (local mode)');
+});
+
+if (process.env.BREVO_API_KEY) {
+  console.log('✅ Email service: Brevo HTTP API');
+} else {
+  console.log('⚠️  Email service: SMTP fallback (set BREVO_API_KEY for production)');
 }
 
 // ========================
