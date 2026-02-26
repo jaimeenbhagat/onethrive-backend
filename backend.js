@@ -26,6 +26,7 @@ const limiter = rateLimit({
 // CORS configuration
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:3000',
   'https://onethrive-temp.vercel.app',
   'https://onethrive.in',
   'https://www.onethrive.in',
@@ -34,11 +35,15 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // Allow requests with no origin (curl, mobile apps, Postman)
+    if (!origin) return callback(null, true);
+    // Allow any vercel.app subdomain (covers all preview/prod deployments)
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    // Allow explicitly listed origins
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Block everything else
+    console.warn(`❌ CORS blocked: ${origin}`);
+    callback(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true,
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
@@ -56,11 +61,10 @@ app.use('/api/culture-quiz', limiter);
 // Allow preflight for all routes
 app.options('*', cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    if (!origin) return callback(null, true);
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE'],
