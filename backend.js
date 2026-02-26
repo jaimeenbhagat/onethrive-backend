@@ -248,10 +248,13 @@ async function sendEmail({ to, subject, html, replyTo }) {
   });
 }
 
-smtpTransporter.verify((error) => {
-  if (error) console.warn('⚠️  SMTP not available (expected on Render):', error.message);
-  else console.log('✅ SMTP ready (local mode)');
-});
+// Only verify SMTP locally — skip on Render to prevent connection timeout crash
+if (!process.env.RENDER) {
+  smtpTransporter.verify((error) => {
+    if (error) console.warn('⚠️  SMTP not available:', error.message);
+    else console.log('✅ SMTP ready (local mode)');
+  });
+}
 
 if (process.env.BREVO_API_KEY) {
   console.log('✅ Email service: Brevo HTTP API');
@@ -854,8 +857,8 @@ app.get('/', (req, res) => {
       });
   
       await emailData.save();
-  
-      // Send email notification to owner
+
+      // Build email content
       const emailSubject = `New Culture Quiz Email Submission - ${email}`;
       const emailBody = `
         <h2>📧 New Culture Quiz Email Submission</h2>
@@ -866,12 +869,12 @@ app.get('/', (req, res) => {
           <p><strong>Quiz Type:</strong> ${quizType || 'culture_quiz'}</p>
           <p><strong>Timestamp:</strong> ${timestamp || new Date().toISOString()}</p>
         </div>
-  
+
         <h3>👤 User Information</h3>
         <p><strong>IP Address:</strong> ${ipAddress}</p>
         <p><strong>User Agent:</strong> ${userAgent}</p>
         <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
-  
+
         <hr style="margin: 30px 0;">
         
         <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
@@ -885,14 +888,6 @@ app.get('/', (req, res) => {
           </ul>
         </div>
       `;
-  
-      const mailOptions = {
-        from: process.env.SENDER_EMAIL,
-        to: 'info@onethrive.in',
-        subject: emailSubject,
-        html: emailBody,
-        replyTo: email
-      };
   
       // Respond immediately — don't wait for email
       res.status(200).json({ 
