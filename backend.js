@@ -993,17 +993,16 @@ app.get('/', (req, res) => {
     process.exit(0);
   });
   
-  // Handle unhandled promise rejections
+  // Handle unhandled promise rejections — log but don't crash
   process.on('unhandledRejection', (err, promise) => {
     console.error('❌ Unhandled Promise Rejection:', err);
-    console.error('❌ Promise:', promise);
-    process.exit(1);
+    // Do NOT exit — a failed background task (e.g. email) should not kill the server
   });
   
-  // Handle uncaught exceptions
+  // Handle uncaught exceptions — log but don't crash on non-fatal errors
   process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err);
-    process.exit(1);
+    // Do NOT exit — keep the server alive
   });
   
   module.exports = app;
