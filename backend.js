@@ -969,6 +969,20 @@ app.get('/', (req, res) => {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔗 API URL: http://localhost:${PORT}`);
+
+    // Self-ping every 10 minutes to prevent Render free tier from sleeping
+    if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+      const SELF_URL = process.env.RENDER_EXTERNAL_URL || `https://onethrive-backend.onrender.com`;
+      setInterval(async () => {
+        try {
+          const res = await fetch(`${SELF_URL}/api/health`);
+          console.log(`🏓 Self-ping OK (${new Date().toISOString()}) - status: ${res.status}`);
+        } catch (e) {
+          console.warn(`⚠️  Self-ping failed: ${e.message}`);
+        }
+      }, 10 * 60 * 1000); // every 10 minutes
+      console.log(`🏓 Self-ping started → ${SELF_URL}/api/health`);
+    }
   });
   
   // Handle graceful shutdown
