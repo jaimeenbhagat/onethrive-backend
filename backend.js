@@ -8,6 +8,9 @@ require('dotenv').config();
 
 const app = express();
 
+// Trust Render's proxy (required for express-rate-limit behind Render/Heroku/etc.)
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 
