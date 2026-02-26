@@ -214,9 +214,11 @@ transporter.verify((error) => {
 });
 
 async function sendEmail({ to, subject, html, replyTo }) {
+  // `to` can be a string or an array of addresses
+  const recipients = Array.isArray(to) ? to.join(', ') : to;
   return transporter.sendMail({
     from: `"OneThrive" <${process.env.SENDER_EMAIL}>`,
-    to,
+    to: recipients,
     subject,
     html,
     ...(replyTo && { replyTo })
@@ -392,7 +394,7 @@ app.post('/api/contact', async (req, res) => {
     `;
 
     // Send email in background (non-blocking)
-    sendEmail({ to: 'info@onethrive.in', subject: emailSubject, html: emailBody, replyTo: workEmail })
+    sendEmail({ to: ['info@onethrive.in', 'smeet.s@onethrive.in'], subject: emailSubject, html: emailBody, replyTo: workEmail })
       .then(() => console.log(`✅ Contact email sent for ${fullName}`))
       .catch(err => console.error('❌ Failed to send contact email:', err.message));
 
@@ -493,7 +495,7 @@ app.post('/api/roi-calculator', async (req, res) => {
     `;
 
     // Send email in background (non-blocking)
-    sendEmail({ to: 'info@onethrive.in', subject: emailSubject, html: emailBody, replyTo: email })
+    sendEmail({ to: ['info@onethrive.in', 'smeet.s@onethrive.in'], subject: emailSubject, html: emailBody, replyTo: email })
       .then(() => console.log(`✅ ROI email sent for ${email}`))
       .catch(err => console.error('❌ Failed to send ROI email:', err.message));
 
@@ -622,7 +624,7 @@ app.post('/api/culture-quiz-results', async (req, res) => {
     `;
 
     // Send email in background (non-blocking)
-    sendEmail({ to: 'info@onethrive.in', subject: emailSubject, html: emailBody, replyTo: email })
+    sendEmail({ to: ['info@onethrive.in', 'smeet.s@onethrive.in'], subject: emailSubject, html: emailBody, replyTo: email })
       .then(() => console.log(`✅ Culture quiz email sent for ${email}`))
       .catch(err => console.error('❌ Failed to send culture quiz email:', err.message));
 
@@ -865,7 +867,7 @@ app.get('/', (req, res) => {
       });
 
       // Send email in background (non-blocking)
-      sendEmail({ to: 'info@onethrive.in', subject: emailSubject, html: emailBody, replyTo: email })
+      sendEmail({ to: ['info@onethrive.in', 'smeet.s@onethrive.in'], subject: emailSubject, html: emailBody, replyTo: email })
         .then(() => console.log(`✅ Culture quiz email notification sent for ${email}`))
         .catch(err => console.error('❌ Failed to send culture quiz email notification:', err.message));
   
