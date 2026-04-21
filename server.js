@@ -1,15 +1,12 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 require('dotenv').config();
+const supabase = require('./supabaseClient');
 
 const app = express();
-
-// Security middleware
-app.use(helmet());
 
 // Rate limiting - 10 requests per 15 minutes per IP
 const limiter = rateLimit({
@@ -21,65 +18,54 @@ const limiter = rateLimit({
 });
 
 // CORS configuration
-const allowedOrigins = [
+const defaultAllowedOrigins = [
   'http://localhost:5173',
-  'https://onethrive-temp.vercel.app',
+  'http://localhost:5174',
+  'http://localhost:3000',
   'https://onethrive.in',
-  'https://www.onethrive.in'
+  'https://www.onethrive.in',
+  'https://onethrive-temp.vercel.app',
+  'https://full-website-opal.vercel.app',
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+const envAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ALLOWED_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = new Set([...defaultAllowedOrigins, ...envAllowedOrigins]);
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+
+  // Allow all Vercel preview/prod origins for OneThrive frontend deployments.
+  if (origin.endsWith('.vercel.app')) return true;
+
+  return false;
+};
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      return callback(null, true);
     }
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-}));
+  methods: ['GET', 'POST', 'OPTIONS'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
+// Security middleware
+app.use(helmet());
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/contact', limiter);
-
-// MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
-
-// Contact Schema
-const contactSchema = new mongoose.Schema({
-  fullName: { type: String, required: true, trim: true, maxlength: 100 },
-  workEmail: {
-    type: String,
-    required: true,
-    trim: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
-  },
-  phoneNumber: { type: String, trim: true, maxlength: 20 },
-  companyName: { type: String, trim: true, maxlength: 100 },
-  participants: { type: String, trim: true },
-  activityType: [{
-    type: String,
-    enum: [
-      'team-building',
-      'wellness-programs',
-      'creative-workshops',
-      'sports-tournaments',
-      'entertainment-events',
-      'offsite-retreats'
-    ]
-  }],
-  message: { type: String, trim: true, maxlength: 1000 },
-  submittedAt: { type: Date, default: Date.now },
-  ipAddress: { type: String }
-}, { timestamps: true });
-
-const Contact = mongoose.model('Contact', contactSchema);
 
 // Email Configuration
 const transporter = nodemailer.createTransport({
@@ -108,9 +94,24 @@ const formatActivityTypes = (activities) => {
   return activities.map(activity => activityMap[activity] || activity).join(', ');
 };
 
+const normalizeValue = (value) => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return value;
+};
+
 // Contact form submission endpoint
 app.post('/api/contact', async (req, res) => {
   try {
+    console.log('Contact API req.body:', req.body);
+
     const {
       fullName,
       workEmail,
@@ -125,20 +126,82 @@ app.post('/api/contact', async (req, res) => {
       return res.status(400).json({ error: 'Full name and email are required' });
     }
 
+    const participantsNumber = Number(participants);
+    const safePayload = {
+      name: normalizeValue(fullName),
+      email: normalizeValue(workEmail)?.toLowerCase() ?? null,
+      phone: normalizeValue(phoneNumber),
+      company: normalizeValue(companyName),
+      participants: Number.isFinite(participantsNumber) ? participantsNumber : null,
+      activity_type: Array.isArray(activityType)
+        ? activityType.map(normalizeValue).filter((item) => item !== null)
+        : normalizeValue(activityType),
+      message: normalizeValue(message),
+    };
+
+    console.log('Contact API mapped payload:', safePayload);
+
+    try {
+      const { data: insertData, error: insertError } = await supabase
+        .from('contacts')
+        .insert([safePayload])
+        .select('*');
+
+      console.log('Supabase insert response:', { data: insertData, error: insertError });
+
+      if (insertError) {
+        console.error('Supabase insert error:', {
+          message: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint,
+          status: insertError.status,
+        });
+        return res.status(500).json({
+          success: false,
+          error: insertError.message || 'Failed to submit contact form',
+          details: {
+            message: insertError.message,
+            code: insertError.code,
+            details: insertError.details,
+            hint: insertError.hint,
+            status: insertError.status,
+          },
+        });
+      }
+
+      if (!insertData || insertData.length === 0) {
+        return res.status(500).json({
+          success: false,
+          error: 'Insert completed but no row was returned from Supabase',
+        });
+      }
+
+      console.log('Supabase insert row:', insertData[0]);
+    } catch (insertError) {
+      console.error('Supabase insert error:', {
+        message: insertError.message,
+        code: insertError.code,
+        details: insertError.details,
+        hint: insertError.hint,
+        status: insertError.status,
+        stack: insertError.stack,
+      });
+
+      return res.status(500).json({
+        success: false,
+        error: insertError.message || 'Failed to submit contact form',
+        details: {
+          message: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint,
+          status: insertError.status,
+        },
+      });
+    }
+
     const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
-
-    const contactData = new Contact({
-      fullName,
-      workEmail,
-      phoneNumber: phoneNumber || '',
-      companyName: companyName || '',
-      participants: participants || '',
-      activityType: activityType || [],
-      message: message || '',
-      ipAddress
-    });
-
-    await contactData.save();
 
     const emailSubject = `New Contact Form Submission - ${fullName}`;
     const emailBody = `
@@ -167,7 +230,7 @@ app.post('/api/contact', async (req, res) => {
 
   } catch (error) {
     console.error('Error processing contact form:', error);
-    res.status(500).json({ error: 'Internal server error. Please try again later.' });
+    res.status(500).json({ success: false, error: error.message || 'Internal server error. Please try again later.' });
   }
 });
 
@@ -186,23 +249,55 @@ app.get('/api/contacts', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const from = (page - 1) * limit;
+    const toRangeEnd = from + limit - 1;
 
-    const contacts = await Contact.find()
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .select('-__v');
+    const { data, count, error } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact' })
+      .range(from, toRangeEnd)
+      .order('id', { ascending: false });
 
-    const total = await Contact.countDocuments();
+    if (error) {
+      console.error('Supabase contacts query error:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        status: error.status,
+      });
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to fetch contacts',
+        details: {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          status: error.status,
+        },
+      });
+    }
+
+    const contacts = (data || []).map((row) => ({
+      fullName: row.name ?? '',
+      workEmail: row.email ?? '',
+      phoneNumber: row.phone ?? '',
+      companyName: row.company ?? '',
+      participants: row.participants ?? '',
+      activityType: row.activity_type ?? [],
+      message: row.message ?? '',
+      submittedAt: row.created_at ?? null,
+      id: row.id ?? null
+    }));
 
     res.status(200).json({
       contacts,
       pagination: {
         page,
         limit,
-        total,
-        pages: Math.ceil(total / limit)
+        total: count || 0,
+        pages: Math.ceil((count || 0) / limit)
       }
     });
   } catch (error) {
@@ -239,5 +334,6 @@ app.use('*', (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log('✅ Server running with CORS enabled');
   console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
 });
