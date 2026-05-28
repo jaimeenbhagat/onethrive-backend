@@ -1,8 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const { BrevoClient } = require('@getbrevo/brevo');
 require('dotenv').config();
 const supabase = require('./supabaseClient');
 
@@ -73,46 +73,34 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/contact', limiter);
 
-// Email Configuration
-const emailUser = process.env.BREVO_SMTP_USER || process.env.EMAIL_USER || process.env.SENDER_EMAIL;
-const emailPass = process.env.BREVO_SMTP_PASS || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD;
-const smtpHost = process.env.BREVO_SMTP_HOST || process.env.EMAIL_HOST || 'smtp-relay.brevo.com';
-const smtpPort = Number(process.env.BREVO_SMTP_PORT || process.env.EMAIL_PORT) || 465;
-const mailFrom = process.env.SENDER_EMAIL || emailUser;
+// Brevo email configuration
+const brevoApiKey = process.env.BREVO_API_KEY;
+const brevoSenderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SENDER_EMAIL;
+const brevoSenderName = process.env.BREVO_SENDER_NAME || 'OneThrive';
+const brevoReplyToEmail = process.env.BREVO_REPLY_TO_EMAIL || brevoSenderEmail;
+const brevoClient = brevoApiKey
+  ? new BrevoClient({
+      apiKey: brevoApiKey,
+      timeoutInSeconds: 15,
+    })
+  : null;
 
-const transporter = nodemailer.createTransport({
-  host: smtpHost,
-  port: smtpPort,
-  secure: true,
-  auth: {
-    user: emailUser,
-    pass: emailPass,
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
-
-const logSmtpError = (error, context) => {
-  console.error(`SMTP ${context} failed:`, {
+const logEmailError = (error, context) => {
+  console.error(`Brevo ${context} failed:`, {
     message: error.message,
+    statusCode: error.statusCode,
     code: error.code,
-    command: error.command,
+    body: error.body,
     response: error.response,
     stack: error.stack,
   });
 };
 
-const verifySmtpConfiguration = async () => {
-  try {
-    await transporter.verify();
-    console.log('✅ Email server is ready to send messages');
-  } catch (error) {
-    logSmtpError(error, 'verification');
-  }
-};
-
-verifySmtpConfiguration();
+if (!brevoClient) {
+  console.error('Brevo API key is missing. Email delivery will fail until BREVO_API_KEY is configured.');
+} else {
+  console.log('✅ Brevo email client configured');
+}
 
 const formatActivityTypes = (activities) => {
   if (!activities || activities.length === 0) return 'None selected';
@@ -250,17 +238,33 @@ app.post('/api/contact', async (req, res) => {
     `;
 
     const mailOptions = {
-      from: mailFrom,
-      to: 'info@onethrive.in',
       subject: emailSubject,
-      html: emailBody,
-      replyTo: workEmail
+      htmlContent: emailBody,
+      sender: {
+        email: brevoSenderEmail,
+        name: brevoSenderName,
+      },
+      to: [
+        {
+          email: 'info@onethrive.in',
+        },
+      ],
+      replyTo: {
+        email: brevoReplyToEmail,
+        name: brevoSenderName,
+      },
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      if (!brevoClient) {
+        throw new Error('BREVO_API_KEY is not configured');
+      }
+
+      await brevoClient.transactionalEmails.sendTransacEmail(mailOptions, {
+        timeoutInSeconds: 15,
+      });
     } catch (mailError) {
-      logSmtpError(mailError, 'send');
+      logEmailError(mailError, 'send');
       throw mailError;
     }
 
