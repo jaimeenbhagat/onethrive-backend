@@ -74,10 +74,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/contact', limiter);
 
 // Email Configuration
-const emailUser = process.env.EMAIL_USER || process.env.SENDER_EMAIL;
-const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD;
-const smtpHost = process.env.EMAIL_HOST || 'smtp.zoho.in';
-const smtpPort = Number(process.env.EMAIL_PORT) || 465;
+const emailUser = process.env.BREVO_SMTP_USER || process.env.EMAIL_USER || process.env.SENDER_EMAIL;
+const emailPass = process.env.BREVO_SMTP_PASS || process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD;
+const smtpHost = process.env.BREVO_SMTP_HOST || process.env.EMAIL_HOST || 'smtp-relay.brevo.com';
+const smtpPort = Number(process.env.BREVO_SMTP_PORT || process.env.EMAIL_PORT) || 465;
+const mailFrom = process.env.SENDER_EMAIL || emailUser;
 
 const transporter = nodemailer.createTransport({
   host: smtpHost,
@@ -249,7 +250,7 @@ app.post('/api/contact', async (req, res) => {
     `;
 
     const mailOptions = {
-      from: emailUser,
+      from: mailFrom,
       to: 'info@onethrive.in',
       subject: emailSubject,
       html: emailBody,
