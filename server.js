@@ -8,10 +8,16 @@ const supabase = require('./supabaseClient');
 
 const app = express();
 
+// Render sits behind a proxy, so trust the first forwarded hop before rate limiting.
+app.set('trust proxy', 1);
+
 // Rate limiting - 10 requests per 15 minutes per IP
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
   message: {
     error: 'Too many requests from this IP, please try again later.',
   },
@@ -68,18 +74,44 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/contact', limiter);
 
 // Email Configuration
+const emailUser = process.env.EMAIL_USER || process.env.SENDER_EMAIL;
+const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD;
+const smtpHost = process.env.EMAIL_HOST || 'smtp.zoho.in';
+const smtpPort = Number(process.env.EMAIL_PORT) || 465;
+
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: smtpHost,
+  port: smtpPort,
+  secure: true,
   auth: {
-    user: process.env.SENDER_EMAIL,
-    pass: process.env.EMAIL_PASSWORD
-  }
+    user: emailUser,
+    pass: emailPass,
+  },
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
-transporter.verify((error, success) => {
-  if (error) console.error('❌ Email configuration error:', error);
-  else console.log('✅ Email server is ready to send messages');
-});
+const logSmtpError = (error, context) => {
+  console.error(`SMTP ${context} failed:`, {
+    message: error.message,
+    code: error.code,
+    command: error.command,
+    response: error.response,
+    stack: error.stack,
+  });
+};
+
+const verifySmtpConfiguration = async () => {
+  try {
+    await transporter.verify();
+    console.log('✅ Email server is ready to send messages');
+  } catch (error) {
+    logSmtpError(error, 'verification');
+  }
+};
+
+verifySmtpConfiguration();
 
 const formatActivityTypes = (activities) => {
   if (!activities || activities.length === 0) return 'None selected';
@@ -217,14 +249,19 @@ app.post('/api/contact', async (req, res) => {
     `;
 
     const mailOptions = {
-      from: process.env.SENDER_EMAIL,
+      from: emailUser,
       to: 'info@onethrive.in',
       subject: emailSubject,
       html: emailBody,
       replyTo: workEmail
     };
 
-    await transporter.sendMail(mailOptions);
+    try {
+      await transporter.sendMail(mailOptions);
+    } catch (mailError) {
+      logSmtpError(mailError, 'send');
+      throw mailError;
+    }
 
     res.status(200).json({ success: true, message: 'Contact form submitted successfully' });
 
