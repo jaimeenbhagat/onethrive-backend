@@ -1,0 +1,99 @@
+{
+  "groups": [
+    {
+      "content_type": "sections",
+      "records": [
+        {
+          "slug": "home.hero",
+          "payload": {
+            "heading": "Build Stronger Teams. Boost Real Engagement.",
+            "description": "We design high-impact employee experiences that spark connection, collaboration, and growth.",
+            "ctaText": "Elevate Your Team Today ->",
+            "ctaUrl": "/contact"
+          },
+          "display_order": 0,
+          "enabled": true
+        },
+        {
+          "slug": "home.about",
+          "payload": {
+            "heading": "Energizing Teams, Elevating Culture",
+            "description": "Break free from one-off events and spark genuine connection.",
+            "secondaryDescription": "Ready to build a workplace everyone talks about?"
+          },
+          "display_order": 1,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "content_type": "contact",
+      "records": [
+        {
+          "slug": "contact.page",
+          "payload": {
+            "heading": "Let's Connect",
+            "description": "We'd love to hear from you! Whether you have questions or need support, feel free to reach out.",
+            "phone": "+91 88502 10248",
+            "email": "info@onethrive.in"
+          },
+          "display_order": 0,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "content_type": "navigation",
+      "records": [
+        { "slug": "home", "payload": { "label": "Home", "url": "/" }, "display_order": 0, "enabled": true },
+        { "slug": "about", "payload": { "label": "About Us", "url": "/about" }, "display_order": 1, "enabled": true },
+        { "slug": "services", "payload": { "label": "Services", "url": "/services" }, "display_order": 2, "enabled": true },
+        { "slug": "contact", "payload": { "label": "Contact Us", "url": "/contact" }, "display_order": 3, "enabled": true }
+      ]
+    },
+    {
+      "content_type": "footer",
+      "records": [
+        {
+          "slug": "site.footer",
+          "payload": {
+            "phone": "+91 88502 10248",
+            "email": "info@onethrive.in",
+            "description": "We empower organizations to build thriving workplace cultures through engaging team-building experiences, wellness initiatives, and curated employee programs."
+          },
+          "display_order": 0,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "content_type": "testimonials",
+      "records": [
+    {
+      "slug": "sheetal-kamat",
+      "payload": {
+        "name": "Sheetal Kamat",
+        "position": "Head of Human Resources",
+        "company": "Laxmi Dental Limited",
+        "message": "The OneThrive team delivered an exceptionally well-executed team-building program featuring pottery making and tote bag painting, with seamless coordination and a positive team presence that strengthened collaboration, creativity, and overall team morale.",
+        "rating": 5
+      },
+      "display_order": 0,
+      "enabled": true
+      },
+      {
+      "slug": "hari-vasudevan",
+      "payload": {
+        "name": "Dr. Hari Vasudevan",
+        "position": "Principal",
+        "company": "SVKM's DJSCE",
+        "message": "The event was truly refreshing. It helped me improve my concentration, especially through the breathing exercises. The combination of movement and mindfulness had a strong impact.",
+        "rating": 4
+      },
+      "display_order": 1,
+      "enabled": true
+        }
+      ]
+    }
+  ]
+}

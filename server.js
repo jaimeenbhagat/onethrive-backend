@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const { BrevoClient } = require('@getbrevo/brevo');
 require('dotenv').config();
 const supabase = require('./supabaseClient');
+const cmsRouter = require('./cmsRouter');
 
 const app = express();
 
@@ -72,6 +73,7 @@ app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/contact', limiter);
+app.use(cmsRouter);
 
 // Brevo email configuration
 const brevoApiKey = process.env.BREVO_API_KEY;
