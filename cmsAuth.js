@@ -2,6 +2,16 @@ const crypto = require('crypto');
 
 const SESSION_COOKIE = 'onethrive_admin_session';
 const SESSION_TTL_SECONDS = 8 * 60 * 60;
+const isProduction = () => process.env.NODE_ENV === 'production';
+
+const cookieAttributes = (maxAge) => [
+  `${SESSION_COOKIE}=`,
+  'HttpOnly',
+  'Path=/',
+  `Max-Age=${maxAge}`,
+  `SameSite=${isProduction() ? 'None' : 'Lax'}`,
+  ...(isProduction() ? ['Secure'] : []),
+].join('; ');
 
 const getSecret = () => process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PASSWORD;
 
@@ -54,12 +64,11 @@ const requireAdmin = (req, res, next) => {
 };
 
 const setSessionCookie = (res, token) => {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${SESSION_TTL_SECONDS}; SameSite=Lax${secure}`);
+  res.setHeader('Set-Cookie', cookieAttributes(SESSION_TTL_SECONDS).replace(`${SESSION_COOKIE}=`, `${SESSION_COOKIE}=${encodeURIComponent(token)}`));
 };
 
 const clearSessionCookie = (res) => {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`);
+  res.setHeader('Set-Cookie', cookieAttributes(0));
 };
 
 module.exports = {

@@ -46,9 +46,6 @@ const isOriginAllowed = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.has(origin)) return true;
 
-  // Allow all Vercel preview/prod origins for OneThrive frontend deployments.
-  if (origin.endsWith('.vercel.app')) return true;
-
   return false;
 };
 
